@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include "protocol.h"
 
-void desksBegin(QueueHandle_t verdictQ);  // ESP-NOW + deskTask
+void desksBegin(QueueHandle_t verdictQ, QueueHandle_t alertSentQ);  // ESP-NOW + deskTask
 
 // Called by the photo server: true if this node owes us a photo right now.
 bool deskExpectingPhoto(uint8_t node);

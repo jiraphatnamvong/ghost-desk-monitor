@@ -66,7 +66,7 @@ struct Req {
   uint8_t kind, node, arg;
 };
 
-static QueueHandle_t s_rxQ, s_reqQ, s_verdictQ;
+static QueueHandle_t s_rxQ, s_reqQ, s_verdictQ, s_alertSentQ;
 static TaskHandle_t s_deskTask;
 static volatile bool s_sendOk;
 static volatile int s_demoOverride = -1;
@@ -267,8 +267,7 @@ static void step(Desk &d, uint8_t node, const Timing &T) {
           char id[8];
           snprintf(id, sizeof(id), "D%02u", node);
           cloudQueueAlert(String("โต๊ะ ") + id + ": ไม่มีคนนั่งมา " + humanTime(absentS) +
-                         " แล้ว ถ้ายังไม่กลับ ระบบจะปล่อยโต๊ะให้คนอื่นในอีก " + humanTime(T.release - absentS));
-          logEvent(d, node, "AWAY", "AWAY", "warning_sent");
+                         " แล้ว ถ้ายังไม่กลับ ระบบจะปล่อยโต๊ะให้คนอื่นในอีก " + humanTime(T.release - absentS), node);
         }
         if (!d.checking && sinceCheckS >= T.recheck) startCheck(d, node, false);
       }
@@ -412,6 +411,13 @@ static void deskTask(void *) {
     Verdict v;
     while (xQueueReceive(s_verdictQ, &v, 0) == pdTRUE)
       if (v.node >= 1 && v.node <= MAX_DESKS && s_desks[v.node].checking) applyVerdict(s_desks[v.node], v.node, v.ai);
+    uint8_t alertNode;
+    while (xQueueReceive(s_alertSentQ, &alertNode, 0) == pdTRUE)
+      if (alertNode >= 1 && alertNode <= MAX_DESKS && s_desks[alertNode].known) {
+        Desk &d = s_desks[alertNode];
+        const char *state = d.offline ? "OFFLINE" : STATE_NAME[d.state];
+        logEvent(d, alertNode, state, state, "warning_sent");
+      }
     Req q;
     while (xQueueReceive(s_reqQ, &q, 0) == pdTRUE) handleReq(q);
 
@@ -430,8 +436,9 @@ static void deskTask(void *) {
 
 // ---------- public ----------
 
-void desksBegin(QueueHandle_t verdictQ) {
+void desksBegin(QueueHandle_t verdictQ, QueueHandle_t alertSentQ) {
   s_verdictQ = verdictQ;
+  s_alertSentQ = alertSentQ;
   s_rxQ = xQueueCreate(8, sizeof(RxBatch));
   s_reqQ = xQueueCreate(4, sizeof(Req));
   s_prefs.begin("ghostdesk", false);

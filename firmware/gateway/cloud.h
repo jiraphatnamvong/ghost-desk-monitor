@@ -11,7 +11,7 @@ struct Verdict {
   uint8_t ai;  // AiClass
 };
 
-void cloudBegin(QueueHandle_t verdictQ);  // starts the uplink and vision tasks
+void cloudBegin(QueueHandle_t verdictQ, QueueHandle_t alertSentQ);  // starts the uplink and vision tasks
 
 // Supabase: queue one row for POST /rest/v1/<table>. Never blocks; the oldest row is dropped when full.
 void cloudQueueRow(const char *table, const String &json);
@@ -19,7 +19,7 @@ size_t cloudPendingRows();
 
 // Post a warning to the team's Discord channel (webhook in secrets.h). Never blocks; sent by the uplink task,
 // retried while it fails, dropped if it cannot go out within ALERT_MAX_AGE_MS.
-void cloudQueueAlert(const String &text);
+void cloudQueueAlert(const String &text, uint8_t node = 0);
 
 // settings.demo_mode as last read from Supabase (false until the first successful read).
 bool cloudDemoMode();
