@@ -28,6 +28,7 @@ struct Row {
 struct AlertMsg {
   String text;
   uint32_t queued;
+  uint8_t node;
 };
 
 static std::deque<Row> s_rows;        // Supabase rows waiting to go up
@@ -44,6 +45,7 @@ struct VisionJob {
 };
 static QueueHandle_t s_visionQ;
 static QueueHandle_t s_verdictQ;
+static QueueHandle_t s_alertSentQ;
 
 // Stamp each row with the gateway's own clock (NTP, set in setup) when it is known, so a row that waited out an
 // internet outage keeps the time it really happened. Before the clock is set, Supabase's now() is used.
@@ -74,10 +76,10 @@ size_t cloudPendingRows() {
   return n;
 }
 
-void cloudQueueAlert(const String &text) {
+void cloudQueueAlert(const String &text, uint8_t node) {
   xSemaphoreTake(s_mutex, portMAX_DELAY);
   if (s_alerts.size() >= 20) s_alerts.pop_front();
-  s_alerts.push_back({text, millis()});
+  s_alerts.push_back({text, millis(), node});
   xSemaphoreGive(s_mutex);
 }
 
@@ -217,9 +219,11 @@ static void uplinkTask(void *) {
     if (haveAlert && (int32_t)(millis() - s_alertNextTry) >= 0) {
       idle = false;
       uint32_t retryMs;
-      if (sendDiscord(alert, retryMs) == SEND_RETRY) {
+      SendResult result = sendDiscord(alert, retryMs);
+      if (result == SEND_RETRY) {
         s_alertNextTry = millis() + retryMs;  // wait before the next try; Supabase rows keep going up meanwhile
       } else {
+        if (result == SEND_OK && alert.node > 0) xQueueSend(s_alertSentQ, &alert.node, portMAX_DELAY);
         xSemaphoreTake(s_mutex, portMAX_DELAY);
         if (!s_alerts.empty()) s_alerts.pop_front();
         xSemaphoreGive(s_mutex);
@@ -349,10 +353,11 @@ static void visionTask(void *) {
   }
 }
 
-void cloudBegin(QueueHandle_t verdictQ) {
+void cloudBegin(QueueHandle_t verdictQ, QueueHandle_t alertSentQ) {
   s_mutex = xSemaphoreCreateMutex();
   s_visionQ = xQueueCreate(2, sizeof(VisionJob));
   s_verdictQ = verdictQ;
+  s_alertSentQ = alertSentQ;
   xTaskCreatePinnedToCore(uplinkTask, "uplink", 10240, nullptr, 1, nullptr, 0);
   xTaskCreatePinnedToCore(visionTask, "vision", 10240, nullptr, 1, nullptr, 0);
 }
