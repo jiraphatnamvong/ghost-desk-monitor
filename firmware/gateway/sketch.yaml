@@ -1,0 +1,4 @@
+# Board and Tools settings for this sketch (Waveshare ESP32-S3-DEV-KIT-N8R8, the gateway). Read by arduino-cli and firmware/flash.py.
+# Arduino IDE 2 does not read this file: set the same values in its Tools menu once per sketch (README, Setup).
+# The port is left out on purpose: it differs per laptop.
+default_fqbn: esp32:esp32:esp32s3:FlashSize=8M,PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=default_8MB
